@@ -47,6 +47,7 @@
 I2C_HandleTypeDef hi2c1;
 
 SAI_HandleTypeDef hsai_BlockA1;
+DMA_HandleTypeDef hdma_sai1_a;
 
 /* USER CODE BEGIN PV */
 const uint16_t SineTable[SAMPLE_NUM]
@@ -58,6 +59,7 @@ uint16_t buffer[BUFSIZE * 2] __ATTR_RAM_D2;
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_SAI1_Init(void);
 /* USER CODE BEGIN PFP */
@@ -99,6 +101,7 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_I2C1_Init();
   MX_SAI1_Init();
   /* USER CODE BEGIN 2 */
@@ -121,6 +124,7 @@ int main(void)
   HAL_Delay(1);
 
 
+  // Initialize, open control port, set to power down
   uint8_t data = 0x03; // CPEN=1, PDN=1
     halStatus = HAL_I2C_Mem_Write(&hi2c1, (0x10 << 1), 0x07, I2C_MEMADD_SIZE_8BIT, &data, 1, HAL_MAX_DELAY);
     if (halStatus != HAL_OK) {
@@ -128,12 +132,27 @@ int main(void)
         Error_LED();
     }
 
-   data = 0x0;
+  data = (1 << 3) | 1;
+  halStatus = HAL_I2C_Mem_Write(&hi2c1, (0x10 << 1), 0x01, I2C_MEMADD_SIZE_8BIT, &data, 1, HAL_MAX_DELAY);
+  if (halStatus != HAL_OK) {
+    uint32_t errorCode = hi2c1.ErrorCode;
+    Error_LED();
+  }
+
+
+   data = 0x0; // PDN = 0
    halStatus = HAL_I2C_Mem_Write(&hi2c1, (0x10 << 1), 0x07, I2C_MEMADD_SIZE_8BIT, &data, 1, HAL_MAX_DELAY);
    if (halStatus != HAL_OK) {
        uint32_t errorCode = hi2c1.ErrorCode;
        Error_LED();
    }
+
+
+  halStatus = HAL_SAI_Transmit_DMA(&hsai_BlockA1, (uint8_t*) &buffer, BUFSIZE*2);
+  if (halStatus != HAL_OK) {
+    uint32_t errorCode = hi2c1.ErrorCode;
+    Error_LED();
+  }
 
   /* USER CODE END 2 */
 
@@ -180,7 +199,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLM = RCC_PLLM_DIV1;
   RCC_OscInitStruct.PLL.PLLN = 24;
   RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
-  RCC_OscInitStruct.PLL.PLLQ = RCC_PLLQ_DIV8;
+  RCC_OscInitStruct.PLL.PLLQ = RCC_PLLQ_DIV2;
   RCC_OscInitStruct.PLL.PLLR = RCC_PLLR_DIV4;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
@@ -262,45 +281,50 @@ static void MX_SAI1_Init(void)
 
   /* USER CODE END SAI1_Init 0 */
 
+  hsai_BlockA1.Init.MckOutput = SAI_MCK_OUTPUT_ENABLE;
   /* USER CODE BEGIN SAI1_Init 1 */
 
   /* USER CODE END SAI1_Init 1 */
   hsai_BlockA1.Instance = SAI1_Block_A;
-  hsai_BlockA1.Init.Protocol = SAI_FREE_PROTOCOL;
   hsai_BlockA1.Init.AudioMode = SAI_MODEMASTER_TX;
-  hsai_BlockA1.Init.DataSize = SAI_DATASIZE_24;
-  hsai_BlockA1.Init.FirstBit = SAI_FIRSTBIT_MSB;
-  hsai_BlockA1.Init.ClockStrobing = SAI_CLOCKSTROBING_RISINGEDGE;
   hsai_BlockA1.Init.Synchro = SAI_ASYNCHRONOUS;
   hsai_BlockA1.Init.OutputDrive = SAI_OUTPUTDRIVE_ENABLE;
-  hsai_BlockA1.Init.NoDivider = SAI_MASTERDIVIDER_ENABLE;
+  hsai_BlockA1.Init.NoDivider = SAI_MASTERDIVIDER_DISABLE;
   hsai_BlockA1.Init.MckOverSampling = SAI_MCK_OVERSAMPLING_DISABLE;
   hsai_BlockA1.Init.FIFOThreshold = SAI_FIFOTHRESHOLD_1QF;
-  hsai_BlockA1.Init.AudioFrequency = SAI_AUDIO_FREQUENCY_48K;
-  hsai_BlockA1.Init.MckOutput = SAI_MCK_OUTPUT_ENABLE;
+  hsai_BlockA1.Init.AudioFrequency = SAI_AUDIO_FREQUENCY_MCKDIV;
+  hsai_BlockA1.Init.Mckdiv = 6;
   hsai_BlockA1.Init.SynchroExt = SAI_SYNCEXT_DISABLE;
   hsai_BlockA1.Init.MonoStereoMode = SAI_STEREOMODE;
   hsai_BlockA1.Init.CompandingMode = SAI_NOCOMPANDING;
   hsai_BlockA1.Init.TriState = SAI_OUTPUT_NOTRELEASED;
-  hsai_BlockA1.Init.PdmInit.Activation = DISABLE;
-  hsai_BlockA1.Init.PdmInit.MicPairsNbr = 0;
-  hsai_BlockA1.Init.PdmInit.ClockEnable = SAI_PDM_CLOCK1_ENABLE;
-  hsai_BlockA1.FrameInit.FrameLength = 64;
-  hsai_BlockA1.FrameInit.ActiveFrameLength = 1;
-  hsai_BlockA1.FrameInit.FSDefinition = SAI_FS_STARTFRAME;
-  hsai_BlockA1.FrameInit.FSPolarity = SAI_FS_ACTIVE_LOW;
-  hsai_BlockA1.FrameInit.FSOffset = SAI_FS_BEFOREFIRSTBIT;
-  hsai_BlockA1.SlotInit.FirstBitOffset = 0;
-  hsai_BlockA1.SlotInit.SlotSize = SAI_SLOTSIZE_DATASIZE;
-  hsai_BlockA1.SlotInit.SlotNumber = 2;
-  hsai_BlockA1.SlotInit.SlotActive = 0x00000003;
-  if (HAL_SAI_Init(&hsai_BlockA1) != HAL_OK)
+  if (HAL_SAI_InitProtocol(&hsai_BlockA1, SAI_I2S_STANDARD, SAI_PROTOCOL_DATASIZE_24BIT, 2) != HAL_OK)
   {
     Error_Handler();
   }
   /* USER CODE BEGIN SAI1_Init 2 */
 
   /* USER CODE END SAI1_Init 2 */
+
+}
+
+/**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMAMUX1_CLK_ENABLE();
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Channel1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
+  /* DMAMUX_OVR_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMAMUX_OVR_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMAMUX_OVR_IRQn);
 
 }
 
@@ -371,8 +395,7 @@ void Error_Handler(void)
   }
   /* USER CODE END Error_Handler_Debug */
 }
-
-#ifdef  USE_FULL_ASSERT
+#ifdef USE_FULL_ASSERT
 /**
   * @brief  Reports the name of the source file and the source line number
   *         where the assert_param error has occurred.

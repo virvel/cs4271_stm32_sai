@@ -1,0 +1,7 @@
+.cproject
+.idea
+.DS_Store
+cmake-*
+.settings
+.project
+.osx.project
