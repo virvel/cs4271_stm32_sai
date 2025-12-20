@@ -227,21 +227,6 @@ void SAI1_IRQHandler(void)
   /* USER CODE END SAI1_IRQn 1 */
 }
 
-/**
-  * @brief This function handles DMAMUX overrun interrupt.
-  */
-void DMAMUX_OVR_IRQHandler(void)
-{
-  /* USER CODE BEGIN DMAMUX_OVR_IRQn 0 */
-
-  /* USER CODE END DMAMUX_OVR_IRQn 0 */
-  // Handle DMA1_Channel1
-  HAL_DMAEx_MUX_IRQHandler(&hdma_sai1_a);
-  /* USER CODE BEGIN DMAMUX_OVR_IRQn 1 */
-
-  /* USER CODE END DMAMUX_OVR_IRQn 1 */
-}
-
 /* USER CODE BEGIN 1 */
 
 /* USER CODE END 1 */
