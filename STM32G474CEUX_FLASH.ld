@@ -44,7 +44,8 @@ _Min_Stack_Size = 0x400; /* required amount of stack */
 /* Memories definition */
 MEMORY
 {
-  RAM    (xrw)    : ORIGIN = 0x20000000,   LENGTH = 128K
+  RAM_D2   (xrw)  : ORIGIN = 0x20014000, LENGTH = 16K
+  RAM    (xrw)    : ORIGIN = 0x20000000,   LENGTH = 80K
   FLASH    (rx)    : ORIGIN = 0x8000000,   LENGTH = 512K
 }
 
@@ -182,6 +183,11 @@ SECTIONS
     libm.a ( * )
     libgcc.a ( * )
   }
+
+   .dma_d2_buffer : /* Space before ':' is critical */
+    {
+      *(.dma_d2_buffer)
+    } >RAM_D2
 
   .ARM.attributes 0 : { *(.ARM.attributes) }
 }

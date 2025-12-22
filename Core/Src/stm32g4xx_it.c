@@ -56,7 +56,6 @@
 
 /* External variables --------------------------------------------------------*/
 extern DMA_HandleTypeDef hdma_sai1_a;
-extern SAI_HandleTypeDef hsai_BlockA1;
 /* USER CODE BEGIN EV */
 
 /* USER CODE END EV */
@@ -214,17 +213,18 @@ void DMA1_Channel1_IRQHandler(void)
 }
 
 /**
-  * @brief This function handles SAI1 global interrupt.
+  * @brief This function handles DMAMUX overrun interrupt.
   */
-void SAI1_IRQHandler(void)
+void DMAMUX_OVR_IRQHandler(void)
 {
-  /* USER CODE BEGIN SAI1_IRQn 0 */
+  /* USER CODE BEGIN DMAMUX_OVR_IRQn 0 */
 
-  /* USER CODE END SAI1_IRQn 0 */
-  HAL_SAI_IRQHandler(&hsai_BlockA1);
-  /* USER CODE BEGIN SAI1_IRQn 1 */
+  /* USER CODE END DMAMUX_OVR_IRQn 0 */
+  // Handle DMA1_Channel1
+  HAL_DMAEx_MUX_IRQHandler(&hdma_sai1_a);
+  /* USER CODE BEGIN DMAMUX_OVR_IRQn 1 */
 
-  /* USER CODE END SAI1_IRQn 1 */
+  /* USER CODE END DMAMUX_OVR_IRQn 1 */
 }
 
 /* USER CODE BEGIN 1 */
