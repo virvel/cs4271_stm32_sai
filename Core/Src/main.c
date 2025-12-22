@@ -22,7 +22,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "arm_math.h"
-#define BUFSIZE 2048 //need 2*n
+#define BUFSIZE 128//need 2*n
 
 /* USER CODE END Includes */
 
@@ -41,13 +41,6 @@
   __attribute__((section(".dma_d2_buffer"), used, aligned (4)))
 #endif
 
-#if defined( __ICCARM__ )
-#define DMA_D3_BUFFER \
-  _Pragma("location=\".dma_d3_buffer\"")
-#else
-#define DMA_D3_BUFFER \
-  __attribute__((section(".dma_d3_buffer"), used, aligned (4)))
-#endif
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -62,20 +55,15 @@ SAI_HandleTypeDef hsai_BlockA1;
 DMA_HandleTypeDef hdma_sai1_a;
 
 /* USER CODE BEGIN PV */
-DMA_D2_BUFFER uint16_t buffer[BUFSIZE * 2];
+DMA_D2_BUFFER int16_t buffer[BUFSIZE * 2];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
-
 static void MX_GPIO_Init(void);
-
 static void MX_DMA_Init(void);
-
 static void MX_I2C1_Init(void);
-
 static void MX_SAI1_Init(void);
-
 /* USER CODE BEGIN PFP */
 /* USER CODE END PFP */
 
@@ -83,32 +71,40 @@ static void MX_SAI1_Init(void);
 /* USER CODE BEGIN 0 */
 void Error_LED(void);
 
-float mid = (1 << 15)/2 - 1;
+const float twopi = 6.2831853072f;
+float mid = (1 << 14) -1;
 float ph1 = 0.f;
 float ph2 = 0.f;
-float inc = 1000.f / 48000.f;
-float inc2 = 50.f / 48000.f;
-float twopi = 6.28f;
+const float f1 = 500.f;
+const float f2 = 2000.f;
+const float inc = f1 / 48000.f;
+const float inc2 = f2 / 48000.f;
 
-void process(uint8_t *buf) {
-  for (size_t i = 0; i < BUFSIZE; ++i) {
-    buf[2 * i] =  mid * arm_sin_f32(ph1);
-    buf[2 * i + 1] = mid * arm_sin_f32(ph2);
+
+void process(int16_t *buf) {
+  for (size_t i = 0; i < BUFSIZE/2; ++i) {
+    buf[2*i] = mid * (arm_cos_f32(ph1));
+    buf[2*i + 1] = mid * (arm_sin_f32(ph2));
     ph1 += inc;
     ph2 += inc2;
-    if (ph1 > twopi)
+    if (ph1 >= twopi)
       ph1 -= twopi;
-    if (ph2 > twopi)
+    if (ph2 >= twopi)
       ph2 -= twopi;
   }
 }
 
 void HAL_SAI_TxCpltCallback(SAI_HandleTypeDef *hsai) {
-  process(&buffer[0]);
+    process(&buffer[BUFSIZE]);
 }
 
 void HAL_SAI_TxHalfCpltCallback(SAI_HandleTypeDef *hsai) {
-  process(&buffer[BUFSIZE]);
+    process(&buffer[0]);
+}
+
+void HAL_SAI_ErrorCallback(SAI_HandleTypeDef *hsai) {
+  uint8_t errorCode = hsai_BlockA1.ErrorCode;
+  Error_LED();
 }
 
 /* USER CODE END 0 */
@@ -117,7 +113,9 @@ void HAL_SAI_TxHalfCpltCallback(SAI_HandleTypeDef *hsai) {
   * @brief  The application entry point.
   * @retval int
   */
-int main(void) {
+int main(void)
+{
+
   /* USER CODE BEGIN 1 */
 
   /* USER CODE END 1 */
@@ -147,12 +145,10 @@ int main(void) {
 
   HAL_StatusTypeDef halStatus;
 
-  for (size_t i = 0; i < BUFSIZE; ++i) {
+  for (size_t i = 0; i < BUFSIZE * 2; ++i) {
     buffer[2 * i] = 0;
     buffer[2 * i + 1] = 0;
   }
-  buffer[0] = (1 << 15) - 1;
-  // buffer[1] = -((1 << 15) - 1);
 
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_10, GPIO_PIN_RESET);
   HAL_Delay(100);
@@ -170,7 +166,7 @@ int main(void) {
   }
 
   //
-  data = (1 << 6);
+  data = (1 << 6) | 0x01;
   halStatus = HAL_I2C_Mem_Write(&hi2c1, (0x10 << 1), 0x01, I2C_MEMADD_SIZE_8BIT, &data, 1, HAL_MAX_DELAY);
   if (halStatus != HAL_OK) {
     uint32_t errorCode = hi2c1.ErrorCode;
@@ -184,7 +180,7 @@ int main(void) {
     Error_LED();
   }
 
-  halStatus = HAL_SAI_Transmit_DMA(&hsai_BlockA1, (uint8_t *) &buffer, BUFSIZE);
+  halStatus = HAL_SAI_Transmit_DMA(&hsai_BlockA1, (uint8_t *) &buffer, BUFSIZE * 2);
   if (halStatus != HAL_OK) {
     uint32_t errorCode = hsai_BlockA1.ErrorCode;
     Error_LED();
@@ -207,7 +203,8 @@ int main(void) {
   * @brief System Clock Configuration
   * @retval None
   */
-void SystemClock_Config(void) {
+void SystemClock_Config(void)
+{
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
 
@@ -227,20 +224,22 @@ void SystemClock_Config(void) {
   RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
   RCC_OscInitStruct.PLL.PLLQ = RCC_PLLQ_DIV6;
   RCC_OscInitStruct.PLL.PLLR = RCC_PLLR_DIV6;
-  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
+  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+  {
     Error_Handler();
   }
 
   /** Initializes the CPU, AHB and APB buses clocks
   */
-  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK
-                                | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
+                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSE;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK) {
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
+  {
     Error_Handler();
   }
 }
@@ -250,7 +249,9 @@ void SystemClock_Config(void) {
   * @param None
   * @retval None
   */
-static void MX_I2C1_Init(void) {
+static void MX_I2C1_Init(void)
+{
+
   /* USER CODE BEGIN I2C1_Init 0 */
 
   /* USER CODE END I2C1_Init 0 */
@@ -267,24 +268,28 @@ static void MX_I2C1_Init(void) {
   hi2c1.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
   hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
   hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
-  if (HAL_I2C_Init(&hi2c1) != HAL_OK) {
+  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
+  {
     Error_Handler();
   }
 
   /** Configure Analogue filter
   */
-  if (HAL_I2CEx_ConfigAnalogFilter(&hi2c1, I2C_ANALOGFILTER_ENABLE) != HAL_OK) {
+  if (HAL_I2CEx_ConfigAnalogFilter(&hi2c1, I2C_ANALOGFILTER_ENABLE) != HAL_OK)
+  {
     Error_Handler();
   }
 
   /** Configure Digital filter
   */
-  if (HAL_I2CEx_ConfigDigitalFilter(&hi2c1, 0) != HAL_OK) {
+  if (HAL_I2CEx_ConfigDigitalFilter(&hi2c1, 0) != HAL_OK)
+  {
     Error_Handler();
   }
   /* USER CODE BEGIN I2C1_Init 2 */
 
   /* USER CODE END I2C1_Init 2 */
+
 }
 
 /**
@@ -292,7 +297,9 @@ static void MX_I2C1_Init(void) {
   * @param None
   * @retval None
   */
-static void MX_SAI1_Init(void) {
+static void MX_SAI1_Init(void)
+{
+
   /* USER CODE BEGIN SAI1_Init 0 */
 
   /* USER CODE END SAI1_Init 0 */
@@ -305,12 +312,12 @@ static void MX_SAI1_Init(void) {
   hsai_BlockA1.Init.AudioMode = SAI_MODEMASTER_TX;
   hsai_BlockA1.Init.DataSize = SAI_DATASIZE_16;
   hsai_BlockA1.Init.FirstBit = SAI_FIRSTBIT_MSB;
-  hsai_BlockA1.Init.ClockStrobing = SAI_CLOCKSTROBING_FALLINGEDGE;
+  hsai_BlockA1.Init.ClockStrobing = SAI_CLOCKSTROBING_RISINGEDGE;
   hsai_BlockA1.Init.Synchro = SAI_ASYNCHRONOUS;
   hsai_BlockA1.Init.OutputDrive = SAI_OUTPUTDRIVE_DISABLE;
   hsai_BlockA1.Init.NoDivider = SAI_MASTERDIVIDER_ENABLE;
   hsai_BlockA1.Init.MckOverSampling = SAI_MCK_OVERSAMPLING_DISABLE;
-  hsai_BlockA1.Init.FIFOThreshold = SAI_FIFOTHRESHOLD_EMPTY;
+  hsai_BlockA1.Init.FIFOThreshold = SAI_FIFOTHRESHOLD_1QF;
   hsai_BlockA1.Init.AudioFrequency = SAI_AUDIO_FREQUENCY_48K;
   hsai_BlockA1.Init.MckOutput = SAI_MCK_OUTPUT_ENABLE;
   hsai_BlockA1.Init.SynchroExt = SAI_SYNCEXT_DISABLE;
@@ -320,27 +327,31 @@ static void MX_SAI1_Init(void) {
   hsai_BlockA1.Init.PdmInit.Activation = DISABLE;
   hsai_BlockA1.Init.PdmInit.MicPairsNbr = 0;
   hsai_BlockA1.Init.PdmInit.ClockEnable = SAI_PDM_CLOCK1_ENABLE;
-  hsai_BlockA1.FrameInit.FrameLength = 16;
+  hsai_BlockA1.FrameInit.FrameLength = 32;
   hsai_BlockA1.FrameInit.ActiveFrameLength = 16;
   hsai_BlockA1.FrameInit.FSDefinition = SAI_FS_CHANNEL_IDENTIFICATION;
-  hsai_BlockA1.FrameInit.FSPolarity = SAI_FS_ACTIVE_HIGH;
+  hsai_BlockA1.FrameInit.FSPolarity = SAI_FS_ACTIVE_LOW;
   hsai_BlockA1.FrameInit.FSOffset = SAI_FS_FIRSTBIT;
   hsai_BlockA1.SlotInit.FirstBitOffset = 0;
   hsai_BlockA1.SlotInit.SlotSize = SAI_SLOTSIZE_DATASIZE;
-  hsai_BlockA1.SlotInit.SlotNumber = 1;
-  hsai_BlockA1.SlotInit.SlotActive = 0x00000001;
-  if (HAL_SAI_Init(&hsai_BlockA1) != HAL_OK) {
+  hsai_BlockA1.SlotInit.SlotNumber = 2;
+  hsai_BlockA1.SlotInit.SlotActive = 0x00000003;
+  if (HAL_SAI_Init(&hsai_BlockA1) != HAL_OK)
+  {
     Error_Handler();
   }
   /* USER CODE BEGIN SAI1_Init 2 */
 
   /* USER CODE END SAI1_Init 2 */
+
 }
 
 /**
   * Enable DMA controller clock
   */
-static void MX_DMA_Init(void) {
+static void MX_DMA_Init(void)
+{
+
   /* DMA controller clock enable */
   __HAL_RCC_DMAMUX1_CLK_ENABLE();
   __HAL_RCC_DMA1_CLK_ENABLE();
@@ -352,6 +363,7 @@ static void MX_DMA_Init(void) {
   /* DMAMUX_OVR_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMAMUX_OVR_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMAMUX_OVR_IRQn);
+
 }
 
 /**
@@ -359,7 +371,8 @@ static void MX_DMA_Init(void) {
   * @param None
   * @retval None
   */
-static void MX_GPIO_Init(void) {
+static void MX_GPIO_Init(void)
+{
   GPIO_InitTypeDef GPIO_InitStruct = {0};
   /* USER CODE BEGIN MX_GPIO_Init_1 */
 
@@ -372,7 +385,7 @@ static void MX_GPIO_Init(void) {
   __HAL_RCC_GPIOC_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_6 | AUDIO_RST_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_6|AUDIO_RST_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : PC6 */
   GPIO_InitStruct.Pin = GPIO_PIN_6;
@@ -410,7 +423,8 @@ void Error_LED(void) {
   * @brief  This function is executed in case of error occurrence.
   * @retval None
   */
-void Error_Handler(void) {
+void Error_Handler(void)
+{
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
   __disable_irq();
@@ -426,7 +440,8 @@ void Error_Handler(void) {
   * @param  line: assert_param error line source number
   * @retval None
   */
-void assert_failed(uint8_t *file, uint32_t line) {
+void assert_failed(uint8_t *file, uint32_t line)
+{
   /* USER CODE BEGIN 6 */
   /* User can add his own implementation to report the file name and line number,
      ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
