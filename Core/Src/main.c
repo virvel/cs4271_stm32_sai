@@ -22,7 +22,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "arm_math.h"
-#define BUFSIZE 128//need 2*n
+#define BUFSIZE 64//need 2*n
 
 /* USER CODE END Includes */
 
@@ -60,10 +60,15 @@ DMA_D2_BUFFER int16_t buffer[BUFSIZE * 2];
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
+
 static void MX_GPIO_Init(void);
+
 static void MX_DMA_Init(void);
+
 static void MX_I2C1_Init(void);
+
 static void MX_SAI1_Init(void);
+
 /* USER CODE BEGIN PFP */
 /* USER CODE END PFP */
 
@@ -72,34 +77,34 @@ static void MX_SAI1_Init(void);
 void Error_LED(void);
 
 const float twopi = 6.2831853072f;
-float mid = (1 << 14) -1;
+float mid = (1 << 14) - 1;
 float ph1 = 0.f;
 float ph2 = 0.f;
-const float f1 = 500.f;
-const float f2 = 2000.f;
+const float f1 = 110.f;
+const float f2 = 150.f;
 const float inc = f1 / 48000.f;
 const float inc2 = f2 / 48000.f;
 
 
 void process(int16_t *buf) {
-  for (size_t i = 0; i < BUFSIZE/2; ++i) {
-    buf[2*i] = mid * (arm_cos_f32(ph1));
-    buf[2*i + 1] = mid * (arm_sin_f32(ph2));
+  for (size_t i = 0; i < BUFSIZE / 2; ++i) {
+    buf[2 * i] = mid * (arm_cos_f32(twopi * ph1));
+    buf[2 * i + 1] = mid * (arm_sin_f32(twopi * ph2));
     ph1 += inc;
     ph2 += inc2;
-    if (ph1 >= twopi)
-      ph1 -= twopi;
-    if (ph2 >= twopi)
-      ph2 -= twopi;
+    if (ph1 >= 1.f)
+      ph1 -= 1.f;
+    if (ph2 >= 1.f)
+      ph2 -= 1.f;
   }
 }
 
 void HAL_SAI_TxCpltCallback(SAI_HandleTypeDef *hsai) {
-    process(&buffer[BUFSIZE]);
+  process(&buffer[BUFSIZE]);
 }
 
 void HAL_SAI_TxHalfCpltCallback(SAI_HandleTypeDef *hsai) {
-    process(&buffer[0]);
+  process(&buffer[0]);
 }
 
 void HAL_SAI_ErrorCallback(SAI_HandleTypeDef *hsai) {
@@ -113,9 +118,7 @@ void HAL_SAI_ErrorCallback(SAI_HandleTypeDef *hsai) {
   * @brief  The application entry point.
   * @retval int
   */
-int main(void)
-{
-
+int main(void) {
   /* USER CODE BEGIN 1 */
 
   /* USER CODE END 1 */
@@ -146,8 +149,7 @@ int main(void)
   HAL_StatusTypeDef halStatus;
 
   for (size_t i = 0; i < BUFSIZE * 2; ++i) {
-    buffer[2 * i] = 0;
-    buffer[2 * i + 1] = 0;
+    buffer[i] = 0;
   }
 
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_10, GPIO_PIN_RESET);
@@ -158,14 +160,15 @@ int main(void)
 
 
   // // Initialize, open control port, set to power down
-  uint8_t data = 0x03; // CPEN=1, PDN=1
+  // Set PDN and CPEN
+  uint8_t data = 0x03;
   halStatus = HAL_I2C_Mem_Write(&hi2c1, (0x10 << 1), 0x07, I2C_MEMADD_SIZE_8BIT, &data, 1, HAL_MAX_DELAY);
   if (halStatus != HAL_OK) {
     uint32_t errorCode = hi2c1.ErrorCode;
     Error_LED();
   }
 
-  //
+  // Set M0 and DAC_FIF0
   data = (1 << 6) | 0x01;
   halStatus = HAL_I2C_Mem_Write(&hi2c1, (0x10 << 1), 0x01, I2C_MEMADD_SIZE_8BIT, &data, 1, HAL_MAX_DELAY);
   if (halStatus != HAL_OK) {
@@ -173,6 +176,7 @@ int main(void)
     Error_LED();
   }
 
+  // Reset PDN bit
   data = 0x02; // PDN = 0
   halStatus = HAL_I2C_Mem_Write(&hi2c1, (0x10 << 1), 0x07, I2C_MEMADD_SIZE_8BIT, &data, 1, HAL_MAX_DELAY);
   if (halStatus != HAL_OK) {
@@ -203,8 +207,7 @@ int main(void)
   * @brief System Clock Configuration
   * @retval None
   */
-void SystemClock_Config(void)
-{
+void SystemClock_Config(void) {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
 
@@ -224,22 +227,20 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
   RCC_OscInitStruct.PLL.PLLQ = RCC_PLLQ_DIV6;
   RCC_OscInitStruct.PLL.PLLR = RCC_PLLR_DIV6;
-  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
-  {
+  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
     Error_Handler();
   }
 
   /** Initializes the CPU, AHB and APB buses clocks
   */
-  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
-                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK
+                                | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSE;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
-  {
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK) {
     Error_Handler();
   }
 }
@@ -249,9 +250,7 @@ void SystemClock_Config(void)
   * @param None
   * @retval None
   */
-static void MX_I2C1_Init(void)
-{
-
+static void MX_I2C1_Init(void) {
   /* USER CODE BEGIN I2C1_Init 0 */
 
   /* USER CODE END I2C1_Init 0 */
@@ -268,28 +267,24 @@ static void MX_I2C1_Init(void)
   hi2c1.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
   hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
   hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
-  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
-  {
+  if (HAL_I2C_Init(&hi2c1) != HAL_OK) {
     Error_Handler();
   }
 
   /** Configure Analogue filter
   */
-  if (HAL_I2CEx_ConfigAnalogFilter(&hi2c1, I2C_ANALOGFILTER_ENABLE) != HAL_OK)
-  {
+  if (HAL_I2CEx_ConfigAnalogFilter(&hi2c1, I2C_ANALOGFILTER_ENABLE) != HAL_OK) {
     Error_Handler();
   }
 
   /** Configure Digital filter
   */
-  if (HAL_I2CEx_ConfigDigitalFilter(&hi2c1, 0) != HAL_OK)
-  {
+  if (HAL_I2CEx_ConfigDigitalFilter(&hi2c1, 0) != HAL_OK) {
     Error_Handler();
   }
   /* USER CODE BEGIN I2C1_Init 2 */
 
   /* USER CODE END I2C1_Init 2 */
-
 }
 
 /**
@@ -297,9 +292,7 @@ static void MX_I2C1_Init(void)
   * @param None
   * @retval None
   */
-static void MX_SAI1_Init(void)
-{
-
+static void MX_SAI1_Init(void) {
   /* USER CODE BEGIN SAI1_Init 0 */
 
   /* USER CODE END SAI1_Init 0 */
@@ -336,22 +329,18 @@ static void MX_SAI1_Init(void)
   hsai_BlockA1.SlotInit.SlotSize = SAI_SLOTSIZE_DATASIZE;
   hsai_BlockA1.SlotInit.SlotNumber = 2;
   hsai_BlockA1.SlotInit.SlotActive = 0x00000003;
-  if (HAL_SAI_Init(&hsai_BlockA1) != HAL_OK)
-  {
+  if (HAL_SAI_Init(&hsai_BlockA1) != HAL_OK) {
     Error_Handler();
   }
   /* USER CODE BEGIN SAI1_Init 2 */
 
   /* USER CODE END SAI1_Init 2 */
-
 }
 
 /**
   * Enable DMA controller clock
   */
-static void MX_DMA_Init(void)
-{
-
+static void MX_DMA_Init(void) {
   /* DMA controller clock enable */
   __HAL_RCC_DMAMUX1_CLK_ENABLE();
   __HAL_RCC_DMA1_CLK_ENABLE();
@@ -363,7 +352,6 @@ static void MX_DMA_Init(void)
   /* DMAMUX_OVR_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMAMUX_OVR_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMAMUX_OVR_IRQn);
-
 }
 
 /**
@@ -371,8 +359,7 @@ static void MX_DMA_Init(void)
   * @param None
   * @retval None
   */
-static void MX_GPIO_Init(void)
-{
+static void MX_GPIO_Init(void) {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
   /* USER CODE BEGIN MX_GPIO_Init_1 */
 
@@ -385,7 +372,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOC_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_6|AUDIO_RST_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_6 | AUDIO_RST_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : PC6 */
   GPIO_InitStruct.Pin = GPIO_PIN_6;
@@ -423,8 +410,7 @@ void Error_LED(void) {
   * @brief  This function is executed in case of error occurrence.
   * @retval None
   */
-void Error_Handler(void)
-{
+void Error_Handler(void) {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
   __disable_irq();
@@ -440,8 +426,7 @@ void Error_Handler(void)
   * @param  line: assert_param error line source number
   * @retval None
   */
-void assert_failed(uint8_t *file, uint32_t line)
-{
+void assert_failed(uint8_t *file, uint32_t line) {
   /* USER CODE BEGIN 6 */
   /* User can add his own implementation to report the file name and line number,
      ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
